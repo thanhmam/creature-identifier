@@ -104,6 +104,25 @@
             min-height: 50px;
             text-align: left;
             line-height: 1.6;
+        }
+        
+        /* NEW: Styling for the result container */
+        #resultContainer {
+            display: none; /* Hidden by default */
+            align-items: flex-start;
+            gap: 1rem;
+        }
+
+        #resultImage {
+            max-width: 120px;
+            max-height: 120px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        #resultText {
+            margin: 0;
             white-space: pre-wrap; /* Giữ nguyên định dạng xuống dòng của kết quả AI */
         }
 
@@ -138,8 +157,14 @@
     </form>
 
     <div class="spinner" id="spinner"></div>
+    
+    <!-- MODIFIED: Result area now has a new structure -->
     <div id="result">
-        <p>Kết quả sẽ được hiển thị ở đây.</p>
+        <p id="initialMessage">Kết quả sẽ được hiển thị ở đây.</p>
+        <div id="resultContainer">
+            <img id="resultImage" src="#" alt="Ảnh đã tải lên">
+            <p id="resultText"></p>
+        </div>
     </div>
 </div>
 
@@ -151,10 +176,14 @@
     const spinner = document.getElementById('spinner');
     const fileNameDiv = document.getElementById('fileName');
 
-    // !!! QUAN TRỌNG: Thay thế URL này bằng Production URL từ n8n Webhook Node của bạn
+    // NEW: Get new elements from the result area
+    const initialMessage = document.getElementById('initialMessage');
+    const resultContainer = document.getElementById('resultContainer');
+    const resultImage = document.getElementById('resultImage');
+    const resultText = document.getElementById('resultText');
+
     const N8N_WEBHOOK_URL = 'https://n8n.thanhmam.com/webhook/creature-identifier'; 
 
-    // Kích hoạt nút "Kiểm tra" khi người dùng đã chọn file
     imageInput.addEventListener('change', () => {
         if (imageInput.files.length > 0) {
             fileNameDiv.textContent = imageInput.files[0].name;
@@ -166,7 +195,7 @@
     });
 
     uploadForm.addEventListener('submit', async (event) => {
-        event.preventDefault(); // Ngăn form gửi theo cách truyền thống
+        event.preventDefault(); 
 
         if (imageInput.files.length === 0) {
             alert('Vui lòng chọn một hình ảnh!');
@@ -176,11 +205,17 @@
         // Vô hiệu hóa nút bấm và hiển thị spinner
         submitBtn.disabled = true;
         spinner.style.display = 'block';
-        resultDiv.innerHTML = '<p>Đang phân tích, vui lòng chờ...</p>';
+        
+        // MODIFIED: Hide initial message and show the result container with the uploaded image
+        initialMessage.style.display = 'none';
+        resultContainer.style.display = 'flex';
+        resultText.textContent = 'Đang phân tích, vui lòng chờ...';
+
+        const uploadedFile = imageInput.files[0];
+        resultImage.src = URL.createObjectURL(uploadedFile); // Create a temporary URL for the image
 
         const formData = new FormData();
-        // Chú ý: key là 'file'. Chúng ta sẽ dùng key này trong n8n.
-        formData.append('file', imageInput.files[0]); 
+        formData.append('file', uploadedFile); 
 
         try {
             const response = await fetch(N8N_WEBHOOK_URL, {
@@ -195,13 +230,15 @@
 
             const data = await response.json();
             
-            // Hiển thị kết quả trả về từ n8n
-            // Giả định n8n trả về JSON có dạng { "result": "Nội dung từ AI..." }
-            resultDiv.innerHTML = `<p>${data.result}</p>`;
+            // MODIFIED: Update only the text part of the result
+            resultText.textContent = data.result;
 
         } catch (error) {
             console.error('Có lỗi xảy ra:', error);
-            resultDiv.innerHTML = `<p style="color: red;">Đã xảy ra lỗi: ${error.message}. Vui lòng kiểm tra lại URL của Webhook hoặc workflow trên n8n.</p>`;
+            // MODIFIED: Hide the result container and show an error message
+            resultContainer.style.display = 'none';
+            initialMessage.style.display = 'block';
+            initialMessage.innerHTML = `<p style="color: red;">Đã xảy ra lỗi: ${error.message}. Vui lòng kiểm tra lại URL của Webhook hoặc workflow trên n8n.</p>`;
         } finally {
             // Kích hoạt lại nút bấm và ẩn spinner
             submitBtn.disabled = false;
