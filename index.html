@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nhận diện Sinh vật</title>
+    <style>
+        /* --- General Styling --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+            color: #333;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+
+        /* --- Main Container --- */
+        .container {
+            background-color: white;
+            padding: 2rem 3rem;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+
+        h1 {
+            color: #0d6efd;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            color: #555;
+            line-height: 1.5;
+        }
+
+        /* --- Form Elements --- */
+        #uploadForm {
+            margin-top: 1.5rem;
+        }
+
+        #imageInput {
+            display: none; /* Ẩn input mặc định */
+        }
+
+        .upload-label {
+            display: inline-block;
+            padding: 12px 25px;
+            background-color: #e9f2ff;
+            color: #0d6efd;
+            border: 2px dashed #0d6efd;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+        .upload-label:hover {
+            background-color: #d1e3ff;
+            transform: translateY(-2px);
+        }
+
+        #fileName {
+            margin-top: 12px;
+            font-style: italic;
+            color: #555;
+            height: 20px;
+        }
+
+        #submitBtn {
+            margin-top: 1rem;
+            padding: 12px 24px;
+            background: linear-gradient(45deg, #0d6efd, #0558d1);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s, box-shadow 0.3s;
+            box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
+        }
+        #submitBtn:disabled {
+            background: #a9c7f5;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        #submitBtn:not(:disabled):hover {
+            background: linear-gradient(45deg, #0b5ed7, #0449b3);
+        }
+
+        /* --- Result & Loading --- */
+        #result {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            min-height: 50px;
+            text-align: left;
+            line-height: 1.6;
+            white-space: pre-wrap; /* Giữ nguyên định dạng xuống dòng của kết quả AI */
+        }
+
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #0d6efd;
+            animation: spin 1s ease infinite;
+            margin: 20px auto;
+            display: none; /* Ẩn ban đầu */
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Nhận diện Sinh vật</h1>
+    <p>Tải lên một hình ảnh để AI xác định đó là sinh vật gì.</p>
+
+    <form id="uploadForm">
+        <label for="imageInput" class="upload-label">Chọn ảnh...</label>
+        <input type="file" id="imageInput" name="image" accept="image/*" required>
+        <div id="fileName">Chưa có ảnh nào được chọn</div>
+        <button type="submit" id="submitBtn" disabled>Kiểm tra</button>
+    </form>
+
+    <div class="spinner" id="spinner"></div>
+    <div id="result">
+        <p>Kết quả sẽ được hiển thị ở đây.</p>
+    </div>
+</div>
+
+<script>
+    const uploadForm = document.getElementById('uploadForm');
+    const imageInput = document.getElementById('imageInput');
+    const submitBtn = document.getElementById('submitBtn');
+    const resultDiv = document.getElementById('result');
+    const spinner = document.getElementById('spinner');
+    const fileNameDiv = document.getElementById('fileName');
+
+    // !!! QUAN TRỌNG: Thay thế URL này bằng Production URL từ n8n Webhook Node của bạn
+    const N8N_WEBHOOK_URL = 'https://n8n.thanhmam.com/webhook/YOUR_UNIQUE_PATH'; 
+
+    // Kích hoạt nút "Kiểm tra" khi người dùng đã chọn file
+    imageInput.addEventListener('change', () => {
+        if (imageInput.files.length > 0) {
+            fileNameDiv.textContent = imageInput.files[0].name;
+            submitBtn.disabled = false;
+        } else {
+            fileNameDiv.textContent = 'Chưa có ảnh nào được chọn';
+            submitBtn.disabled = true;
+        }
+    });
+
+    uploadForm.addEventListener('submit', async (event) => {
+        event.preventDefault(); // Ngăn form gửi theo cách truyền thống
+
+        if (imageInput.files.length === 0) {
+            alert('Vui lòng chọn một hình ảnh!');
+            return;
+        }
+
+        // Vô hiệu hóa nút bấm và hiển thị spinner
+        submitBtn.disabled = true;
+        spinner.style.display = 'block';
+        resultDiv.innerHTML = '<p>Đang phân tích, vui lòng chờ...</p>';
+
+        const formData = new FormData();
+        // Chú ý: key là 'file'. Chúng ta sẽ dùng key này trong n8n.
+        formData.append('file', imageInput.files[0]); 
+
+        try {
+            const response = await fetch(N8N_WEBHOOK_URL, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Lỗi từ server: ${response.status} ${response.statusText}. Chi tiết: ${errorText}`);
+            }
+
+            const data = await response.json();
+            
+            // Hiển thị kết quả trả về từ n8n
+            // Giả định n8n trả về JSON có dạng { "result": "Nội dung từ AI..." }
+            resultDiv.innerHTML = `<p>${data.result}</p>`;
+
+        } catch (error) {
+            console.error('Có lỗi xảy ra:', error);
+            resultDiv.innerHTML = `<p style="color: red;">Đã xảy ra lỗi: ${error.message}. Vui lòng kiểm tra lại URL của Webhook hoặc workflow trên n8n.</p>`;
+        } finally {
+            // Kích hoạt lại nút bấm và ẩn spinner
+            submitBtn.disabled = false;
+            spinner.style.display = 'none';
+        }
+    });
+</script>
+
+</body>
+</html>
