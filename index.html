@@ -141,6 +141,34 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Style for video element */
+        #cameraPreview {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            display: none; /* Hidden by default */
+        }
+
+        /* Style for capture button */
+        #captureBtn {
+            margin-top: 1rem;
+            padding: 12px 24px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s, box-shadow 0.3s;
+            box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3);
+            display: none; /* Hidden by default */
+        }
+
+        #captureBtn:hover {
+            background-color: #218838;
+        }
     </style>
 </head>
 <body>
@@ -150,8 +178,13 @@
     <p>Tải lên một hình ảnh để AI xác định đó là sinh vật gì.</p>
 
     <form id="uploadForm">
-        <label for="imageInput" class="upload-label">Chọn ảnh...</label>
-        <input type="file" id="imageInput" name="image" accept="image/*" required>
+        <div id="inputOptions">
+            <button type="button" id="openCameraButton" class="upload-label">Mở Camera</button>
+            <label for="imageInput" class="upload-label">Chọn ảnh...</label>
+            <input type="file" id="imageInput" name="image" accept="image/*">
+        </div>
+        <video id="cameraPreview" autoplay playsinline></video>
+        <button type="button" id="captureBtn">Chụp ảnh</button>
         <div id="fileName">Chưa có ảnh nào được chọn</div>
         <button type="submit" id="submitBtn" disabled>Kiểm tra</button>
     </form>
@@ -182,6 +215,12 @@
     const resultImage = document.getElementById('resultImage');
     const resultText = document.getElementById('resultText');
 
+    // NEW: Camera elements
+    const openCameraButton = document.getElementById('openCameraButton');
+    const cameraPreview = document.getElementById('cameraPreview');
+    const captureBtn = document.getElementById('captureBtn');
+    let stream = null; // To store the camera stream
+
     const N8N_WEBHOOK_URL = 'https://n8n.thanhmam.com/webhook/creature-identifier'; 
 
     imageInput.addEventListener('change', () => {
@@ -197,11 +236,32 @@
     uploadForm.addEventListener('submit', async (event) => {
         event.preventDefault(); 
 
-        if (imageInput.files.length === 0) {
-            alert('Vui lòng chọn một hình ảnh!');
+        let uploadedFile = null;
+
+        if (cameraPreview.style.display === 'block') {
+            // If camera is active, capture the image from the video stream
+            const canvas = document.createElement('canvas');
+            canvas.width = cameraPreview.videoWidth;
+            canvas.height = cameraPreview.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(cameraPreview, 0, 0, canvas.width, canvas.height);
+
+            // Convert the canvas content to a Blob
+            canvas.toBlob(function(blob) {
+                uploadedFile = new File([blob], 'capturedImage.png', { type: 'image/png' });
+                processImage(uploadedFile);
+            }, 'image/png');
+        } else if (imageInput.files.length > 0) {
+            // If file is uploaded
+            uploadedFile = imageInput.files[0];
+            processImage(uploadedFile);
+        } else {
+            alert('Vui lòng chọn một hình ảnh hoặc sử dụng camera!');
             return;
         }
+    });
 
+    async function processImage(file) {
         // Vô hiệu hóa nút bấm và hiển thị spinner
         submitBtn.disabled = true;
         spinner.style.display = 'block';
@@ -211,11 +271,10 @@
         resultContainer.style.display = 'flex';
         resultText.textContent = 'Đang phân tích, vui lòng chờ...';
 
-        const uploadedFile = imageInput.files[0];
-        resultImage.src = URL.createObjectURL(uploadedFile); // Create a temporary URL for the image
+        resultImage.src = URL.createObjectURL(file); // Create a temporary URL for the image
 
         const formData = new FormData();
-        formData.append('file', uploadedFile); 
+        formData.append('file', file); 
 
         try {
             const response = await fetch(N8N_WEBHOOK_URL, {
@@ -244,6 +303,28 @@
             submitBtn.disabled = false;
             spinner.style.display = 'none';
         }
+    }
+
+    // NEW: Camera functionality
+    openCameraButton.addEventListener('click', async () => {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+            cameraPreview.srcObject = stream;
+            cameraPreview.style.display = 'block';
+            captureBtn.style.display = 'block';
+            imageInput.disabled = true;
+            openCameraButton.disabled = true;
+            fileNameDiv.textContent = 'Camera đang mở';
+        } catch (err) {
+            console.error("Không thể truy cập camera: ", err);
+            alert("Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.");
+        }
+    });
+
+    captureBtn.addEventListener('click', () => {
+        // You don't need to do anything here, the image is captured on form submit
+        fileNameDiv.textContent = 'Ảnh đã chụp từ camera';
+        submitBtn.disabled = false;
     });
 </script>
 
